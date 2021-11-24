@@ -6,6 +6,11 @@ class AccountTestCase(APITestCase):
 
     def setUp(self) -> None:
         self.host = 'http://127.0.0.1:8000'
+        self.superuser = User.objects.create_superuser(
+            username="super_test",
+            email="super_test@newsletter.com",
+            password="super@test_123"
+        )
 
     def test_register_user(self):
         new_user = {
@@ -24,3 +29,7 @@ class AccountTestCase(APITestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['username'], new_user['username'])
         self.assertEqual(response.data['id'], result[0].id)
+
+    def test_login(self):
+        response = self.client.post(f'{self.host}/login/', {"username": "super_test", "password": "super@test_123"})
+        self.assertContains(response, 'access', status_code=200)
