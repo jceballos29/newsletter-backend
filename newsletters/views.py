@@ -23,9 +23,10 @@ class NewsletterViewSet(ModelViewSet):
             for i in self.request.query_params:
                 data[i] = self.request.query_params[i]
             return self.queryset.filter(**data)
-        except:
+        except KeyError:
             return self.queryset
 
+# Admin -------------------------------------
     def create(self, request, *args, **kwargs):
         data = copy(self.request.data)
         data['created_by'] = self.request.user.id
@@ -58,38 +59,17 @@ class NewsletterViewSet(ModelViewSet):
             new_tag_serialized.save()
             return Response(status=status.HTTP_201_CREATED, data=new_tag_serialized.data)
 
-    @action(methods=['GET'], detail=False)
-    def subscribed(self, request):
-        subscriptions = request.user.subscriptions.all()
-        subscriptions_serialized = NewsletterSerializer(subscriptions, many=True)
-        return Response(status=status.HTTP_200_OK, data=subscriptions_serialized.data)
-
     @action(methods=['POST'], detail=True)
-    def vote(self, request, pk=None):
+    def share(self, request, pk=None):
         newsletter = self.get_object()
-        newsletter.votes.add(request.user)
-
-        return Response(status=status.HTTP_200_OK)
-
-    @action(methods=['POST'], detail=True)
-    def subscribe(self, request, pk=None):
-        newsletter = self.get_object()
-        if not request.user == newsletter.created_by:
-            if len(newsletter.votes.all()) >= newsletter.target:
-                newsletter.subscribers.add(request.user)
-                send_email_subscribe.apply_async(args=[request.user.email, newsletter.name])
-                send_email_datetime = datetime.now() + timedelta(days=newsletter.frequency)
-                send_email.apply_async(args=[request.user.email, newsletter.name], eta=send_email_datetime)
-                return Response(status=status.HTTP_200_OK)
-        return Response(status=status.HTTP_400_BAD_REQUEST)
-
-    @action(methods=['POST'], detail=True)
-    def unsubscribe(self, request, pk=None):
-        newsletter = self.get_object()
-        if request.user in newsletter.subscribers.all():
-            print(request.user.email, newsletter.name)
-            newsletter.subscribers.remove(request.user)
-            send_email_unsubscribe.apply_async(args=[request.user.email, newsletter.name])
+        if request.user == newsletter.created_by and newsletter.published:
+            admins = User.objects.filter(is_staff=True)
+            emails = []
+            for i in admins.all():
+                if not i == request.user:
+                    emails.append(str(i.email))
+            print(emails)
+            send_email_share.apply_async(args=[request.user.email, emails, newsletter.name])
             return Response(status=status.HTTP_200_OK)
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
@@ -103,16 +83,38 @@ class NewsletterViewSet(ModelViewSet):
             return Response(status=status.HTTP_200_OK)
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
+# Users -------------------------------------------------------------
     @action(methods=['POST'], detail=True)
-    def share(self, request, pk=None):
+    def subscribe(self, request, pk=None):
         newsletter = self.get_object()
-        if request.user == newsletter.created_by and newsletter.published:
-            admins = User.objects.filter(is_staff=True)
-            emails = []
-            for i in admins.all():
-                if not i == request.user:
-                    emails.append(str(i.email))
-            print(emails)
-            send_email_share.apply_async(args=[request.user.email, emails, newsletter.name])
+        if not request.user == newsletter.created_by:
+            if len(newsletter.votes.all()) >= newsletter.target:
+                newsletter.subscribers.add(request.user)
+                send_email_subscribe.apply_async(args=[request.user.email, newsletter.name])
+                send_email_datetime = datetime.now() + timedelta(days=newsletter.frequency)
+                send_email.apply_async(args=[request.user.email, newsletter.name], eta=send_email_datetime)
+                return Response(status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_400_BAD_REQUEST)
+
+    @action(methods=['POST'], detail=True)
+    def vote(self, request, pk=None):
+        newsletter = self.get_object()
+        newsletter.votes.add(request.user)
+
+        return Response(status=status.HTTP_200_OK)
+
+    @action(methods=['GET'], detail=False)
+    def subscribed(self, request):
+        subscriptions = request.user.subscriptions.all()
+        subscriptions_serialized = NewsletterSerializer(subscriptions, many=True)
+        return Response(status=status.HTTP_200_OK, data=subscriptions_serialized.data)
+
+    @action(methods=['POST'], detail=True)
+    def unsubscribe(self, request, pk=None):
+        newsletter = self.get_object()
+        if request.user in newsletter.subscribers.all():
+            print(request.user.email, newsletter.name)
+            newsletter.subscribers.remove(request.user)
+            send_email_unsubscribe.apply_async(args=[request.user.email, newsletter.name])
             return Response(status=status.HTTP_200_OK)
         return Response(status=status.HTTP_400_BAD_REQUEST)
