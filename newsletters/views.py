@@ -2,20 +2,22 @@ from copy import copy
 from datetime import datetime, timedelta
 
 from django.contrib.auth.models import User
-from rest_framework import permissions, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from newsletters.models import Newsletter, Tag
+from newsletters.permissions import CustomPermissions
 from newsletters.serializers import NewsletterSerializer, TagSerializer, NewsletterCreateSerializer
-from accounts.tasks import send_email_subscribe, send_email_unsubscribe, send_email, send_email_share
+from accounts.tasks import send_email_subscribe, send_email_unsubscribe, send_email, send_email_share, \
+    send_notice_to_publish
 
 
 class NewsletterViewSet(ModelViewSet):
     queryset = Newsletter.objects.all().order_by('id')
     serializer_class = NewsletterSerializer
-    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
+    permission_classes = (CustomPermissions,)
 
     def get_queryset(self):
         try:
@@ -76,7 +78,8 @@ class NewsletterViewSet(ModelViewSet):
     @action(methods=['POST'], detail=True)
     def publish(self, request, pk=None):
         newsletter = self.get_object()
-        if request.user == newsletter.created_by and len(newsletter.votes) >= newsletter.target:
+        print(request.user)
+        if request.user == newsletter.created_by and len(newsletter.votes.all()) >= newsletter.target:
             newsletter.published = True
             newsletter.published_at = datetime.now()
             newsletter.save()
@@ -84,6 +87,24 @@ class NewsletterViewSet(ModelViewSet):
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
 # Users -------------------------------------------------------------
+    @action(methods=['GET'], detail=False)
+    def subscribed(self, request):
+        if request.user.is_authenticated:
+            subscriptions = request.user.subscriptions.all()
+            subscriptions_serialized = NewsletterSerializer(subscriptions, many=True)
+            return Response(status=status.HTTP_200_OK, data=subscriptions_serialized.data)
+        return Response(status=status.HTTP_401_UNAUTHORIZED, data={"detail": "Authentication credentials were not "
+                                                                             "provided."})
+
+    @action(methods=['POST'], detail=True)
+    def vote(self, request, pk=None):
+        newsletter = self.get_object()
+        newsletter.votes.add(request.user)
+        print(len(newsletter.votes.all()))
+        if len(newsletter.votes.all()) >= newsletter.target:
+            send_notice_to_publish.apply_async(args=[newsletter.created_by.email, newsletter.name])
+        return Response(status=status.HTTP_200_OK)
+
     @action(methods=['POST'], detail=True)
     def subscribe(self, request, pk=None):
         newsletter = self.get_object()
@@ -95,19 +116,6 @@ class NewsletterViewSet(ModelViewSet):
                 send_email.apply_async(args=[request.user.email, newsletter.name], eta=send_email_datetime)
                 return Response(status=status.HTTP_200_OK)
         return Response(status=status.HTTP_400_BAD_REQUEST)
-
-    @action(methods=['POST'], detail=True)
-    def vote(self, request, pk=None):
-        newsletter = self.get_object()
-        newsletter.votes.add(request.user)
-
-        return Response(status=status.HTTP_200_OK)
-
-    @action(methods=['GET'], detail=False)
-    def subscribed(self, request):
-        subscriptions = request.user.subscriptions.all()
-        subscriptions_serialized = NewsletterSerializer(subscriptions, many=True)
-        return Response(status=status.HTTP_200_OK, data=subscriptions_serialized.data)
 
     @action(methods=['POST'], detail=True)
     def unsubscribe(self, request, pk=None):

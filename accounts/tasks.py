@@ -87,3 +87,19 @@ def send_email(email, newsletter):
                 </body>
             '''
     )
+
+
+@app.task(name="send_notice_to_publish")
+def send_notice_to_publish(email, newsletter):
+    send_mail(
+        subject="Notice to Publish",
+        from_email='hello@newsletter.com',
+        recipient_list=[email],
+        message=f'You newsletter {newsletter} is ready to publish.',
+        html_message=f'''
+                    <body>
+                        <h1>Notice to Publish</h1>
+                        <p>You newsletter <b>{newsletter}</b> is ready to publish.</p>
+                    </body>
+                '''
+    )
