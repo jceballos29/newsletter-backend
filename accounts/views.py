@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
@@ -9,6 +10,7 @@ from accounts.serializers import UserRegisterSerializer, UserSerializer
 from accounts.tasks import send_email_registration
 
 
+@swagger_auto_schema(method='post', request_body=UserRegisterSerializer)
 @api_view(http_method_names=['POST'])
 @permission_classes(permission_classes=(AllowAny, ))
 def register(request):
