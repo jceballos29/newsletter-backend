@@ -74,7 +74,6 @@ class AccountTestCase(APITestCase):
             {"username": "user_test", "password": "user@test_123"})
         self.user_token = response.data["access"]
 
-# Admin --------------------------------------
     def test_get_list(self):
         response = self.client.get(
             f'{self.host}/newsletters/',
@@ -134,7 +133,6 @@ class AccountTestCase(APITestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-# User ----------------------------------------
     def test_subscribe(self):
         response = self.client.post(
             f'{self.host}/newsletters/{self.newsletter_1.id}/subscribe/',

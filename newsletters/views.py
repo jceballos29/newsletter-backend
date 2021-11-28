@@ -28,7 +28,6 @@ class NewsletterViewSet(ModelViewSet):
         except KeyError:
             return self.queryset
 
-# Admin -------------------------------------
     def create(self, request, *args, **kwargs):
         data = copy(self.request.data)
         data['created_by'] = self.request.user.id
@@ -96,7 +95,6 @@ class NewsletterViewSet(ModelViewSet):
             return Response(status=status.HTTP_200_OK, data=created_serialized.data)
         return Response(status=status.HTTP_401_UNAUTHORIZED)
 
-# Users -------------------------------------------------------------
     @action(methods=['GET'], detail=False)
     def subscribed(self, request):
         subscriptions = request.user.subscriptions.all()
