@@ -64,43 +64,50 @@ class NewsletterViewSet(ModelViewSet):
     @action(methods=['POST'], detail=True)
     def share(self, request, pk=None):
         newsletter = self.get_object()
-        if request.user == newsletter.created_by and newsletter.published:
-            admins = User.objects.filter(is_staff=True)
-            emails = []
-            for i in admins.all():
-                if not i == request.user:
-                    emails.append(str(i.email))
-            print(emails)
-            send_email_share.apply_async(args=[request.user.email, emails, newsletter.name])
-            return Response(status=status.HTTP_200_OK)
+        if request.user == newsletter.created_by:
+            if newsletter.published:
+                admins = User.objects.filter(is_staff=True)
+                emails = []
+                for i in admins.all():
+                    if not i == request.user:
+                        emails.append(str(i.email))
+
+                send_email_share.apply_async(args=[request.user.email, emails, newsletter.name])
+                return Response(status=status.HTTP_200_OK, data={"detail": "The newsletter has been shared with administrators."})
+            return Response(status=status.HTTP_400_BAD_REQUEST, data={"detail": "The newsletter must be published to share."})
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
     @action(methods=['POST'], detail=True)
     def publish(self, request, pk=None):
         newsletter = self.get_object()
-        print(request.user)
         if request.user == newsletter.created_by and len(newsletter.votes.all()) >= newsletter.target:
             newsletter.published = True
             newsletter.published_at = datetime.now()
             newsletter.save()
+
             return Response(status=status.HTTP_200_OK)
         return Response(status=status.HTTP_400_BAD_REQUEST)
+
+    @action(methods=['GET'], detail=False)
+    def created(self, request):
+        if request.user.is_staff:
+            created = Newsletter.objects.filter(created_by=request.user.id)
+            created_serialized = NewsletterSerializer(created, many=True)
+            return Response(status=status.HTTP_200_OK, data=created_serialized.data)
+        return Response(status=status.HTTP_401_UNAUTHORIZED)
 
 # Users -------------------------------------------------------------
     @action(methods=['GET'], detail=False)
     def subscribed(self, request):
-        if request.user.is_authenticated:
-            subscriptions = request.user.subscriptions.all()
-            subscriptions_serialized = NewsletterSerializer(subscriptions, many=True)
-            return Response(status=status.HTTP_200_OK, data=subscriptions_serialized.data)
-        return Response(status=status.HTTP_401_UNAUTHORIZED, data={"detail": "Authentication credentials were not "
-                                                                             "provided."})
+        subscriptions = request.user.subscriptions.all()
+        subscriptions_serialized = NewsletterSerializer(subscriptions, many=True)
+        return Response(status=status.HTTP_200_OK, data=subscriptions_serialized.data)
 
     @action(methods=['POST'], detail=True)
     def vote(self, request, pk=None):
         newsletter = self.get_object()
         newsletter.votes.add(request.user)
-        print(len(newsletter.votes.all()))
+
         if len(newsletter.votes.all()) >= newsletter.target:
             send_notice_to_publish.apply_async(args=[newsletter.created_by.email, newsletter.name])
         return Response(status=status.HTTP_200_OK)
@@ -109,19 +116,19 @@ class NewsletterViewSet(ModelViewSet):
     def subscribe(self, request, pk=None):
         newsletter = self.get_object()
         if not request.user == newsletter.created_by:
-            if len(newsletter.votes.all()) >= newsletter.target:
+            if newsletter.published:
                 newsletter.subscribers.add(request.user)
                 send_email_subscribe.apply_async(args=[request.user.email, newsletter.name])
                 send_email_datetime = datetime.now() + timedelta(days=newsletter.frequency)
                 send_email.apply_async(args=[request.user.email, newsletter.name], eta=send_email_datetime)
-                return Response(status=status.HTTP_200_OK)
+                return Response(status=status.HTTP_200_OK, data={"deatil": "Successful subscription."})
+            return Response(status=status.HTTP_400_BAD_REQUEST, data={"detail": "You cannot subscribe to your own newsletter."})
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
     @action(methods=['POST'], detail=True)
     def unsubscribe(self, request, pk=None):
         newsletter = self.get_object()
         if request.user in newsletter.subscribers.all():
-            print(request.user.email, newsletter.name)
             newsletter.subscribers.remove(request.user)
             send_email_unsubscribe.apply_async(args=[request.user.email, newsletter.name])
             return Response(status=status.HTTP_200_OK)

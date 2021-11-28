@@ -1,8 +1,6 @@
-from datetime import datetime
-
 from django.contrib.auth.models import User
 from django.db import models
-from django.utils.text import slugify
+from django.utils.translation import gettext_lazy as _
 
 
 class Tag(models.Model):
@@ -17,11 +15,11 @@ class Tag(models.Model):
 class Newsletter(models.Model):
 
     class Frequency(models.IntegerChoices):
-        DAILY = 1,
-        WEEKLY = 7,
-        MONTHLY = 30,
+        DAILY = 1
+        WEEKLY = 7
+        MONTHLY = 30
 
-    name = models.CharField(max_length=250)
+    name = models.CharField(max_length=250, unique=True)
     description = models.TextField()
     image_url = models.URLField(max_length=250)
     tags = models.ManyToManyField(Tag, related_name="newsletters")
@@ -29,7 +27,7 @@ class Newsletter(models.Model):
     votes = models.ManyToManyField(User, related_name="newsletters_voted", blank=True)
     published = models.BooleanField(default=False)
     published_at = models.DateField(null=True)
-    frequency = models.IntegerField(choices=Frequency.choices, default=Frequency.WEEKLY)
+    frequency = models.IntegerField(choices=Frequency.choices, default=7)
     created_at = models.DateField(auto_now_add=True)
     updated_at = models.DateField(auto_now=True)
     created_by = models.ForeignKey(User, related_name="newsletters_created", on_delete=models.SET_NULL, null=True)
